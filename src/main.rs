@@ -1,8 +1,10 @@
 use rsa::pkcs1::{DecodeRsaPrivateKey, DecodeRsaPublicKey, EncodeRsaPrivateKey, EncodeRsaPublicKey};
-use rsa::{RsaPrivateKey, RsaPublicKey};
+use rsa::{Pkcs1v15Encrypt, RsaPrivateKey, RsaPublicKey};
 use rsa::traits::PaddingScheme;
 use rand::rngs::OsRng;
 use serde_json;
+
+use std::error::Error;
 
 
 #[derive(Debug)]
@@ -29,6 +31,22 @@ impl Identity {
 
     fn save(&self) {
         self.keys.save(&self.name);
+    }
+
+
+    ////////
+    
+
+    fn encrypt(&self, message: String) -> Result<String, Box<dyn Error>> {
+        let result = self.keys.encrypt(message)?;
+
+        Ok(result)
+    }
+
+    fn decrypt(&self, secret: String) -> Result<String, Box<dyn Error>> {
+        let result = self.keys.decrypt(secret)?;
+
+        Ok(result)
     }
 
 } 
@@ -68,7 +86,7 @@ impl KeyPair {
             .unwrap();
     }
     
-    fn load(filename: &str) -> Result<Self, Box<dyn std::error::Error>>{
+    fn load(filename: &str) -> Result<Self, Box<dyn Error>>{
         let fullpath:String = "identities/".to_owned() + filename + ".key";
 
         let private_pem = std::fs::read_to_string(&fullpath)?;
@@ -83,25 +101,35 @@ impl KeyPair {
             })
     }
 
+    fn encrypt(&self, message:String) -> Result<String, Box<dyn Error>> {
+        let mut rng = rand::thread_rng();
+        let encrypted_data = self.public_key.encrypt(&mut rng, Pkcs1v15Encrypt, message.as_bytes()).expect("failed to encypt");
+        
+        let str_data = String::from_utf8_lossy(&encrypted_data).to_string();
+
+        Ok(str_data)
+    }
+
+    fn decrypt(&self, encrypted_message: String) -> Result<String, Box<dyn Error>> {
+        let decrypted_data = self.private_key.decrypt(Pkcs1v15Encrypt, encrypted_message.as_bytes()).expect("failed to decrypt");
+        let str_data = String::from_utf8_lossy(&decrypted_data).to_string();
+
+        Ok(str_data)
+    }
+
 }
 
 
-fn main() {
+fn main() -> Result<(), Box<dyn Error>>{
+    let ident = Identity::load("test".to_owned())?;
+
+    let testing = "hello hellow ! asasd21343";
+
+    let e = ident.encrypt(testing.to_owned())?;
+    let d = "a";// ident.decrypt(e.clone())?;
+
+    println!("enc: {:?} // dec: {:?}", e, d);
 
 
-
-
-    let ide = Identity::load("tesasdst".to_owned());
-
-    println!("{:?}", ide);
+    Ok(())
 }
-
-// fn save_keys(keypair:KeyPair, filepath: &str) {
-//     let private_key_str = keypair.
-// }
-
-// fn load_keys(filepath: &str) -> KeyPair {
-
-
-//     ("","")
-// } 
