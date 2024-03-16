@@ -5,7 +5,7 @@ use rand::rngs::OsRng;
 use serde_json;
 
 use std::error::Error;
-
+use base64::prelude::*;
 
 #[derive(Debug)]
 struct Identity {
@@ -13,18 +13,18 @@ struct Identity {
     keys: KeyPair
 }
 impl Identity {
-    fn new(name:String) -> Self {
+    fn new(name:&str) -> Self {
         Identity {
-            name,
+            name: name.to_string(),
             keys: KeyPair::new(),
         }
     }
 
-    fn load(name:String) -> Result<Self, Box<dyn std::error::Error>> {
+    fn load(name:&str) -> Result<Self, Box<dyn std::error::Error>> {
         let loaded_keys = KeyPair::load(&name)?;
 
         Ok(Identity {
-            name,
+            name: name.to_string(),
             keys: loaded_keys,
         })
     }
@@ -56,18 +56,20 @@ impl Identity {
 struct KeyPair {
     private_key: RsaPrivateKey,
     public_key: RsaPublicKey,
+    size: usize,
 }
 
 impl KeyPair {
     fn new() -> Self {
         let mut rng = OsRng;
-        let bits = 2048;
+        let bits:usize = 4096;
         let private_key = RsaPrivateKey::new(&mut rng, bits).expect("failed to generate a key");
         let public_key = RsaPublicKey::from(&private_key);
 
         KeyPair {
             private_key,
             public_key,
+            size: bits
         }
     }
 
@@ -97,39 +99,47 @@ impl KeyPair {
 
         Ok(KeyPair {
                 private_key,
-                public_key
+                public_key,
+                size: 4096
             })
     }
 
     fn encrypt(&self, message:String) -> Result<String, Box<dyn Error>> {
         let mut rng = rand::thread_rng();
-        let encrypted_data = self.public_key.encrypt(&mut rng, Pkcs1v15Encrypt, message.as_bytes()).expect("failed to encypt");
-        
-        let str_data = String::from_utf8_lossy(&encrypted_data).to_string();
+        let byted_data = message.as_bytes();
 
-        Ok(str_data)
+        assert!(byted_data.len() <= (self.size/8 - 11));
+
+        let encrypted_data = self.public_key.encrypt(&mut rng, Pkcs1v15Encrypt, &byted_data[..]).expect("failed to encypt");
+        
+        let base64_str = BASE64_STANDARD.encode(&encrypted_data);
+
+        Ok(base64_str)
     }
 
-    fn decrypt(&self, encrypted_message: String) -> Result<String, Box<dyn Error>> {
-        let decrypted_data = self.private_key.decrypt(Pkcs1v15Encrypt, encrypted_message.as_bytes()).expect("failed to decrypt");
-        let str_data = String::from_utf8_lossy(&decrypted_data).to_string();
+    fn decrypt(&self, base64_encrypted_message: String) -> Result<String, Box<dyn Error>> {
+        let encrypted_message = BASE64_STANDARD.decode(&base64_encrypted_message)?;
 
-        Ok(str_data)
+        let decrypted_data = self.private_key
+            .decrypt(Pkcs1v15Encrypt, &encrypted_message[..])?;
+
+        let result = std::str::from_utf8(&decrypted_data)?;
+
+        Ok(result.to_owned())
     }
 
 }
 
 
 fn main() -> Result<(), Box<dyn Error>>{
-    let ident = Identity::load("test".to_owned())?;
+    let ident = Identity::new("test");
 
-    let testing = "hello hellow ! asasd21343";
+    let testing = "hello hellow ! asasd21343Lorem Ipsum is simply dummy text of the printing and typesetting industry. Lorem Ipsum has been the industry's standard dummy text ever since the 1500s, when an unknown printer took a galley of type and scrambled it to make a type specimen book";
 
     let e = ident.encrypt(testing.to_owned())?;
-    let d = "a";// ident.decrypt(e.clone())?;
+    let d = ident.decrypt(e.clone())?;
 
-    println!("enc: {:?} // dec: {:?}", e, d);
-
+    assert_eq!(testing,d);
 
     Ok(())
 }
